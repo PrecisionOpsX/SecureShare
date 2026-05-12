@@ -2,7 +2,7 @@ import "server-only";
 import { headers } from "next/headers";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { AccessEventType, DocumentRow, ShareLinkRow } from "@/types/database";
+import type { AccessEventType, Database, DocumentRow, ShareLinkRow } from "@/types/database";
 
 export type ShareLinkBlockReason = "not_found" | "revoked" | "expired" | "already_viewed";
 
@@ -90,7 +90,7 @@ export async function markFirstViewed(shareLink: ShareLinkRow): Promise<void> {
 export async function logAccessEvent(
   shareLinkId: string,
   eventType: AccessEventType,
-  client?: SupabaseClient,
+  client?: SupabaseClient<Database>,
 ): Promise<void> {
   const supabase = client ?? createAdminClient();
   const { ipAddress, userAgent } = readRequestMeta();

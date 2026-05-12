@@ -1,6 +1,7 @@
 import "server-only";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
+import type { Database } from "@/types/database";
 
 /**
  * Service-role Supabase client. Bypasses Row Level Security and is intended
@@ -10,12 +11,16 @@ import { env } from "@/lib/env";
  * Never import this from a client component, route file, or anything that
  * could end up in the browser bundle. The `server-only` import above causes
  * a build error if it does.
+ *
+ * Parameterised on Database so .update() / .insert() / .select() are
+ * type-checked against the schema. Without this, .update()'s parameter
+ * type resolves to `never` and the build fails.
  */
-let cached: ReturnType<typeof createClient> | null = null;
+let cached: SupabaseClient<Database> | null = null;
 
-export function createAdminClient() {
+export function createAdminClient(): SupabaseClient<Database> {
   if (cached) return cached;
-  cached = createClient(env.supabaseUrl(), env.supabaseServiceRoleKey(), {
+  cached = createClient<Database>(env.supabaseUrl(), env.supabaseServiceRoleKey(), {
     auth: {
       autoRefreshToken: false,
       persistSession: false,

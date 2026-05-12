@@ -5,13 +5,14 @@ export type DocumentStatus = "active" | "revoked" | "expired";
 export type ExpiryType = "days" | "first_view" | "manual";
 export type AccessEventType = "viewed" | "downloaded" | "blocked";
 
-export interface UserRow {
+/** Object types (not interfaces) so Rows satisfy Supabase GenericTable Row = Record<string, unknown>. */
+export type UserRow = {
   id: string;
   email: string;
   created_at: string;
-}
+};
 
-export interface DocumentRow {
+export type DocumentRow = {
   id: string;
   user_id: string;
   file_name: string;
@@ -20,9 +21,9 @@ export interface DocumentRow {
   s3_key: string | null;
   status: DocumentStatus;
   created_at: string;
-}
+};
 
-export interface ShareLinkRow {
+export type ShareLinkRow = {
   id: string;
   document_id: string;
   token: string;
@@ -33,13 +34,71 @@ export interface ShareLinkRow {
   revoked_at: string | null;
   first_viewed_at: string | null;
   created_at: string;
-}
+};
 
-export interface AccessEventRow {
+export type AccessEventRow = {
   id: string;
   share_link_id: string;
   event_type: AccessEventType;
   ip_address: string | null;
   user_agent: string | null;
   created_at: string;
+};
+
+/**
+ * Supabase Database type. Shape matches what `supabase gen types typescript`
+ * would output, so we can swap this for a generated file later without
+ * touching call sites.
+ *
+ * The `Insert` types mark columns with DB defaults (id, created_at, status,
+ * nullable fields) as optional. The `Update` types make everything optional
+ * because partial updates are the norm.
+ */
+type Optional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+
+export interface Database {
+  public: {
+    Tables: {
+      users: {
+        Row: UserRow;
+        Insert: Optional<UserRow, "created_at">;
+        Update: Partial<UserRow>;
+        Relationships: [];
+      };
+      documents: {
+        Row: DocumentRow;
+        Insert: Optional<DocumentRow, "id" | "created_at" | "status" | "s3_key">;
+        Update: Partial<DocumentRow>;
+        Relationships: [];
+      };
+      share_links: {
+        Row: ShareLinkRow;
+        Insert: Optional<
+          ShareLinkRow,
+          | "id"
+          | "created_at"
+          | "expiry_type"
+          | "expiry_days"
+          | "expires_at"
+          | "revoked_at"
+          | "first_viewed_at"
+        >;
+        Update: Partial<ShareLinkRow>;
+        Relationships: [];
+      };
+      access_events: {
+        Row: AccessEventRow;
+        Insert: Optional<
+          AccessEventRow,
+          "id" | "created_at" | "ip_address" | "user_agent"
+        >;
+        Update: Partial<AccessEventRow>;
+        Relationships: [];
+      };
+    };
+    Views: { [_ in never]: never };
+    Functions: { [_ in never]: never };
+    Enums: { [_ in never]: never };
+    CompositeTypes: { [_ in never]: never };
+  };
 }
