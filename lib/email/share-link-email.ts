@@ -10,25 +10,85 @@ interface SendShareLinkEmailOptions {
   expiryDescription: string;
 }
 
+export interface SendShareLinkEmailResult {
+  sent: boolean;
+  /** Human-readable explanation when sent === false. */
+  error?: string;
+}
+
 /**
  * Send a recipient-notification email when a share link is created.
- * Failure is logged but never thrown - email is a nice-to-have, the link
- * itself is the source of truth and the sender can still copy/paste it.
+ *
+ * Returns a structured result instead of throwing because:
+ * 1. The Resend SDK does NOT throw on API errors (e.g. unverified domain,
+ *    invalid recipient). It returns { data, error } and a missed check
+ *    silently drops emails.
+ * 2. The caller wants to keep creating the share link even when the email
+ *    fails, but also wants to tell the sender so they can copy/paste the
+ *    URL manually.
  */
-export async function sendShareLinkEmail(opts: SendShareLinkEmailOptions): Promise<void> {
+export async function sendShareLinkEmail(
+  opts: SendShareLinkEmailOptions,
+): Promise<SendShareLinkEmailResult> {
+  let resend;
   try {
-    const resend = getResend();
-    await resend.emails.send({
+    resend = getResend();
+  } catch (err) {
+    // Thrown by env.resendApiKey() when the env var isn't set.
+    const msg = err instanceof Error ? err.message : "Resend not configured";
+    // eslint-disable-next-line no-console
+    console.error("Resend client init failed", err);
+    return { sent: false, error: msg };
+  }
+
+  try {
+    const { data, error } = await resend.emails.send({
       from: env.resendFromEmail(),
       to: opts.recipientEmail,
       subject: `${opts.senderEmail} shared a document with you on SecureShare`,
       html: renderShareLinkHtml(opts),
       text: renderShareLinkText(opts),
     });
+
+    if (error) {
+      // Common causes: from-domain not verified in Resend, recipient
+      // bounced, rate limit, malformed address.
+      // eslint-disable-next-line no-console
+      console.error("Resend rejected the send", {
+        recipient: opts.recipientEmail,
+        from: env.resendFromEmail(),
+        error,
+      });
+      return { sent: false, error: humanize(error) };
+    }
+
+    if (!data?.id) {
+      return { sent: false, error: "Resend returned no message id" };
+    }
+    return { sent: true };
   } catch (err) {
+    // Network / DNS / unexpected SDK failures.
     // eslint-disable-next-line no-console
     console.error("Failed to send share-link email", { recipient: opts.recipientEmail, err });
+    return {
+      sent: false,
+      error: err instanceof Error ? err.message : "Unknown email error",
+    };
   }
+}
+
+/** Translate Resend's error shape into something a UI can show. */
+function humanize(error: { name?: string; message?: string }): string {
+  const msg = error.message ?? "Email could not be sent.";
+  // Resend's "validation_error" for unverified domain has a long message;
+  // surface the actionable part.
+  if (/domain.*verif/i.test(msg)) {
+    return "Sender domain isn't verified in Resend. Add and verify the domain at resend.com/domains.";
+  }
+  if (/testing emails/i.test(msg)) {
+    return "Resend is in testing mode and only allows sending to verified emails. Verify the sender domain to send to anyone.";
+  }
+  return msg;
 }
 
 function renderShareLinkHtml({

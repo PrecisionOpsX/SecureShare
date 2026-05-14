@@ -151,9 +151,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const shareUrl = buildShareUrl(env.siteUrl(), shareLink.token);
 
-  // Fire-and-forget the recipient notification. Failure is logged inside the
-  // helper but never bubbles up; the link itself is the source of truth.
-  void sendShareLinkEmail({
+  // Await the send so we can surface its result to the sender. The link is
+  // already created, so a failed email never rolls back the share - the
+  // sender can still copy the URL manually. We just tell them.
+  const emailResult = await sendShareLinkEmail({
     recipientEmail,
     senderEmail: user.email ?? "A SecureShare user",
     documentName: document.file_name,
@@ -161,7 +162,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     expiryDescription: describeExpiry(expiryType, expiryDays, expiresAt),
   });
 
-  return NextResponse.json({ shareLink, url: shareUrl });
+  return NextResponse.json({
+    shareLink,
+    url: shareUrl,
+    emailStatus: emailResult.sent
+      ? { sent: true }
+      : { sent: false, error: emailResult.error ?? "Email could not be sent." },
+  });
 }
 
 function describeExpiry(

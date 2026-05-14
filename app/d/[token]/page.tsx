@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { unstable_noStore as noStore } from "next/cache";
 import { Download, FileText, Lock, ShieldOff } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Logo } from "@/components/Logo";
@@ -15,15 +16,21 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// Force dynamic. The token + access logging must run on every request, not
-// from a cached static render.
+// Force dynamic + opt out of every caching layer. Without these, a recipient
+// who refreshes the page after the sender revokes can be served the previous
+// "Download available" render from BFCache / Data Cache / Vercel's edge.
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 interface PageProps {
   params: { token: string };
 }
 
 export default async function RecipientPage({ params }: PageProps) {
+  // Belt to the suspenders above. unstable_noStore opts out of Next's Data
+  // Cache for any fetches in this render and also disables Full Route Cache.
+  noStore();
   const lookup = await lookupShareLink(params.token);
 
   if (!lookup.ok) {

@@ -79,10 +79,10 @@ export default async function PricingPage({
             {[
               "AES-256 encrypted storage",
               "TLS 1.3 in transit",
-              "Tokenised share links",
+              "Tokenised share links (256-bit entropy)",
               "Instant revoke",
-              "Audit trail of every view",
-              "Recipient verification",
+              "Audit trail (views, downloads, blocks)",
+              "Email notifications via Resend",
             ].map((item) => (
               <li key={item} className="flex items-start gap-2">
                 <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />

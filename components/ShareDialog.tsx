@@ -39,6 +39,10 @@ export function ShareDialog({ open, onClose, documentId, documentName }: Props) 
   const [optionIndex, setOptionIndex] = useState(1);
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // Surfaces a warning when the link was created but the recipient email
+  // could not be sent (e.g. unverified Resend domain). The link itself is
+  // safe to copy and use; we just couldn't auto-notify the recipient.
+  const [emailWarning, setEmailWarning] = useState<string | null>(null);
 
   // Existing links + revoke state
   const [links, setLinks] = useState<ShareLinkWithUrl[]>([]);
@@ -85,6 +89,7 @@ export function ShareDialog({ open, onClose, documentId, documentName }: Props) 
       setOptionIndex(1);
       setCreateError(null);
       setCreating(false);
+      setEmailWarning(null);
       setConfirmingRevokeId(null);
       setRevokingId(null);
       setCopiedId(null);
@@ -142,6 +147,7 @@ export function ShareDialog({ open, onClose, documentId, documentName }: Props) 
   async function handleCreate(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setCreateError(null);
+    setEmailWarning(null);
 
     const option = EXPIRY_OPTIONS[optionIndex];
     if (!option) {
@@ -166,6 +172,18 @@ export function ShareDialog({ open, onClose, documentId, documentName }: Props) 
       if (!res.ok) {
         const payload = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(payload.error ?? "Could not create the link.");
+      }
+
+      const payload = (await res.json()) as {
+        emailStatus?: { sent: boolean; error?: string };
+      };
+      // Link exists either way. If the email send failed, tell the sender so
+      // they can copy the URL and notify the recipient manually.
+      if (payload.emailStatus && !payload.emailStatus.sent) {
+        setEmailWarning(
+          payload.emailStatus.error ??
+            "The link was created but we couldn't send the notification email. Copy the link and share it manually.",
+        );
       }
 
       // Refresh the existing-links list so the new one shows up at the top.
@@ -204,10 +222,30 @@ export function ShareDialog({ open, onClose, documentId, documentName }: Props) 
     }
   }
 
+  /**
+   * Close the dialog when the user clicks the backdrop. The native <dialog>
+   * element's click event fires on the dialog itself for backdrop clicks,
+   * because the backdrop pseudo-element forwards clicks to the dialog. We
+   * distinguish backdrop vs inner-card by comparing click coordinates to
+   * the dialog's bounding rect.
+   *
+   * We also bail out if something is in-flight (creating a link, revoking,
+   * saving expiry) so a misclick doesn't lose the user's progress.
+   */
+  function handleBackdropClick(e: React.MouseEvent<HTMLDialogElement>) {
+    if (e.target !== dialogRef.current) return;
+    if (creating || revokingId || savingExpiry) return;
+    const rect = dialogRef.current.getBoundingClientRect();
+    const insideX = e.clientX >= rect.left && e.clientX <= rect.right;
+    const insideY = e.clientY >= rect.top && e.clientY <= rect.bottom;
+    if (!insideX || !insideY) onClose();
+  }
+
   return (
     <dialog
       ref={dialogRef}
       onClose={onClose}
+      onClick={handleBackdropClick}
       className="rounded-2xl p-0 backdrop:bg-slate-900/60 backdrop:backdrop-blur-sm"
     >
       <div className="flex max-h-[min(40rem,calc(100vh-2rem))] w-[min(32rem,calc(100vw-2rem))] flex-col bg-white">
@@ -284,6 +322,19 @@ export function ShareDialog({ open, onClose, documentId, documentName }: Props) 
 
             <form onSubmit={handleCreate} className="mt-3 flex flex-col gap-4" noValidate>
               {createError ? <FormMessage>{createError}</FormMessage> : null}
+              {emailWarning ? (
+                <div
+                  role="alert"
+                  className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+                >
+                  <p className="font-medium">Link created, email not sent.</p>
+                  <p className="mt-0.5">{emailWarning}</p>
+                  <p className="mt-1.5 text-amber-800">
+                    Use the <span className="font-medium">Copy link</span> button on the new
+                    row above to share the link manually.
+                  </p>
+                </div>
+              ) : null}
               <Input
                 label="Recipient email"
                 type="email"
